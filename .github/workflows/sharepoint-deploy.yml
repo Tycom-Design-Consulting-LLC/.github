@@ -1,0 +1,52 @@
+name: Deploy to SharePoint
+
+on:
+  workflow_call:
+    secrets:
+      GRAPH_TENANT_ID:
+        required: true
+      GRAPH_CLIENT_ID:
+        required: true
+      GRAPH_CLIENT_SECRET:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+
+      - name: Checkout deploy script
+        uses: actions/checkout@v4
+        with:
+          repository: Tycom-Design-Consulting-LLC/.github
+          path: _org-github
+          token: ${{ github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install msal requests pyyaml
+
+      - name: Validate deploy config
+        run: |
+          if [ ! -f .tycom-deploy.yml ]; then
+            echo "::error::Missing .tycom-deploy.yml in repo root"
+            exit 1
+          fi
+          echo "Deploy config found."
+
+      - name: Run SharePoint deploy
+        env:
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
+        run: python _org-github/.github/scripts/deploy_to_sharepoint.py
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf _org-github

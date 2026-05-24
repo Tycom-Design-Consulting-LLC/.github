@@ -1,0 +1,30 @@
+# Example: Calling workflow for repo-level deploy
+# ================================================
+# Copy this file to your repo at: .github/workflows/deploy.yml
+# Then customize the paths-ignore list for your repo.
+#
+# Prerequisites:
+#   1. .tycom-deploy.yml exists in your repo root
+#   2. These secrets are set in your repo's Settings > Secrets > Actions:
+#      - GRAPH_TENANT_ID
+#      - GRAPH_CLIENT_ID
+#      - GRAPH_CLIENT_SECRET
+
+name: Deploy to SharePoint
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      # Customize this list -- these files don't need to trigger a deploy
+      - '*.md'
+      - '.gitignore'
+      - 'LICENSE'
+
+jobs:
+  deploy:
+    uses: Tycom-Design-Consulting-LLC/.github/.github/workflows/sharepoint-deploy.yml@main
+    secrets:
+      GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+      GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+      GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
