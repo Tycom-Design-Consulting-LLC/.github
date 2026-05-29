@@ -18,7 +18,9 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import msal
@@ -309,7 +311,44 @@ def compute_diff(local_files: dict, remote_files: dict, sync_mode: str):
     return to_add, to_update, to_delete, unchanged
 
 
-def sync_deployment(client: GraphClient, deployment: dict, repo_root: Path):
+def _upload_manifest(client: GraphClient, drive_id: str, remote_path: str,
+                     repo_name: str, local_files: dict):
+    """Upload a _manifest.json to the deploy root for staleness verification.
+
+    Reads git metadata from GitHub Actions environment variables. If those are
+    not available (e.g., running locally), falls back to sensible defaults.
+    """
+    manifest = {
+        "repo": repo_name,
+        "branch": os.environ.get("GITHUB_REF_NAME", "unknown"),
+        "commit_sha": os.environ.get("GITHUB_SHA", "unknown"),
+        "deployed_at": datetime.now(timezone.utc).isoformat(),
+        "deployed_by": "github-actions",
+        "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+        "file_count": len(local_files),
+    }
+
+    # Write to a temp file and upload
+    manifest_bytes = json.dumps(manifest, indent=2).encode("utf-8")
+    with tempfile.NamedTemporaryFile(
+        suffix=".json", delete=False, mode="wb"
+    ) as tmp:
+        tmp.write(manifest_bytes)
+        tmp_path = Path(tmp.name)
+
+    try:
+        dest = f"{remote_path}/_manifest.json" if remote_path else "_manifest.json"
+        client.upload_file(drive_id, dest, tmp_path)
+        print(f"    M _manifest.json (staleness manifest)")
+    except Exception as e:
+        # Manifest upload failure is non-fatal -- log and continue
+        print(f"    ! Failed to upload _manifest.json: {e}")
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def sync_deployment(client: GraphClient, deployment: dict, repo_root: Path,
+                    repo_name: str = "unknown"):
     """Execute a single deployment target from .tycom-deploy.yml."""
     target = deployment.get("target", "sharepoint")
     if target != "sharepoint":
@@ -399,6 +438,9 @@ def sync_deployment(client: GraphClient, deployment: dict, repo_root: Path):
             msg = f"Failed to delete {rel}: {e}"
             print(f"    ! {msg}")
             errors.append(msg)
+
+    # Upload deploy manifest for staleness verification
+    _upload_manifest(client, drive_id, remote_path, repo_name, local_files)
 
     return {
         "added": len(to_add),
@@ -529,7 +571,7 @@ def main():
             results.append(None)
             continue
 
-        result = sync_deployment(client, deployment, repo_root)
+        result = sync_deployment(client, deployment, repo_root, repo_name)
         results.append(result)
         print()
 
