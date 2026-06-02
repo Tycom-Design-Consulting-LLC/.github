@@ -260,9 +260,18 @@ def scan_local_files(source_dir: Path, includes: list, excludes: list) -> dict:
 
 def _matches_any(path: str, patterns: list) -> bool:
     """Check if a path matches any of the glob patterns."""
+    basename = path.rsplit("/", 1)[-1]
     for pattern in patterns:
         if fnmatch.fnmatch(path, pattern):
             return True
+        # Treat a leading "**/" as zero-or-more directories: also match the
+        # basename against the pattern tail so files at the source_path ROOT
+        # qualify. fnmatch's "**" does not span path separators, so an include
+        # like "**/*.json" would otherwise never match a root-level file
+        # (e.g. master-schema-standards.json), silently dropping it.
+        if pattern.startswith("**/"):
+            if fnmatch.fnmatch(basename, pattern[3:]):
+                return True
         # Also check if any parent directory matches (for patterns like __pycache__/**)
         if pattern.endswith("/**") or pattern.endswith("/**/*"):
             dir_pattern = pattern.rstrip("/*")
